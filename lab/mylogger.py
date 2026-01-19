@@ -6,6 +6,7 @@ Created on Wed Oct 15 14:43:29 2025
 
 """
 
+
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
@@ -14,6 +15,7 @@ from pathlib import Path
 import time
 
 import logging
+from datetime import datetime
 import config
 
 class MyLogger(logging.Logger):
@@ -21,18 +23,30 @@ class MyLogger(logging.Logger):
         super().__init__(name)
         outdir.mkdir(parents=True, exist_ok=True)
         self.setLevel(logging.DEBUG)
-        self.formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+        self.full_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+        self.blank_formatter = logging.Formatter('%(message)s')
         self.console_handler = logging.StreamHandler()
         self.console_handler.setLevel(logging.DEBUG)
-        self.console_handler.setFormatter(self.formatter)
-        self.file_handler = logging.FileHandler(outdir / f'{name}.log', mode=mode)
+        log_fpath = outdir / f"{name}.log"
+        self.file_handler = logging.FileHandler(log_fpath, mode=mode) # mode=a: add, mode=w: overwrite
         self.file_handler.setLevel(logging.INFO)
-        self.file_handler.setFormatter(self.formatter)
         if not self.handlers:
             self.addHandler(self.console_handler)
             self.addHandler(self.file_handler)
+        self.set_all_formatters(self.full_formatter)
+        if mode == 'a':
+            if log_fpath.exists() and log_fpath.stat().st_size > 0:
+                self.put_line(f"\n\n---------- {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ----------\n")
+            else:
+                self.put_line(f"---------- {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ----------\n")
         self.cache = {}
-
+    def set_all_formatters(self, formatter):
+        for handler in self.handlers:
+            handler.setFormatter(formatter)
+    def put_line(self, message, level=logging.INFO):
+        self.set_all_formatters(self.blank_formatter)
+        self.log(level, message)
+        self.set_all_formatters(self.full_formatter)
     def measure_time(self, name, mode):
         if mode == 's':
             st = time.perf_counter()
@@ -42,7 +56,7 @@ class MyLogger(logging.Logger):
             self.cache[f"{name}_et"] = et
             elapsed_time = et - self.cache[f"{name}_st"]
             self.cache[f"{name}_elapsed"] = elapsed_time
-            self.info(f"{name} elapsed time: {elapsed_time}")
+            self.put_line(f">>> {name} elapsed time: {elapsed_time:.4f} sec")
 
 
 if __name__ == '__main__':
@@ -52,10 +66,11 @@ if __name__ == '__main__':
     # logger.info('information')
     # logger.warning('warning')
 
-    # logger = MyLogger(name=__name__)
-    # logger.info('test')
-    # logger.debug('debug test')
-    # logger.warning('****')
+    logger = MyLogger(name=__name__, mode='a')
+    logger.debug('debug test')
+    logger.info('test')
+    logger.warning('****')
+    logger.put_line("line test")
 
     # logger2 = MyLogger(name="logger2")
     # logger2.info("test2")

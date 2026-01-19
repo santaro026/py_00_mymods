@@ -225,10 +225,9 @@ class VideoViewer:
 if __name__ == "__main__":
     print("---- test ----")
 
-    datadir = config.ROOT / "data" / "251210_tc26_v652" / "avi"
-    # dataname = "tc26_sc28_5000rpm_8000fps_rec2673_0to4000.avi"
-    dataname = "tc26_sc28_5000rpm_8000fps_rec2673_34000to38000.avi"
-    data_path = datadir / dataname
+    HOME = Path("/home")
+    datadir = HOME / "sintaro" / "data" / "sampledata" / "mp4"
+    data_path = datadir / "ball.mp4"
 
     video_loader = VideoLoader(data_path)
     print(repr(video_loader))
@@ -237,17 +236,17 @@ if __name__ == "__main__":
     # video_viewer.view()
     # video_viewer.view_frame(100)
 
-    video_processor = VideoProcessor(video_loader)
-    center = (511, 507)
-    center = (513, 507)
-    target_size = (1000, 1000)
-    num_frames = video_loader.num_frames
-    fps = 8000
-    deg_per_frame = np.degrees(2138.46/60*2*np.pi) / fps
-    angles = np.arange(num_frames) * deg_per_frame
+    # video_processor = VideoProcessor(video_loader)
+    # center = (511, 507)
+    # center = (513, 507)
+    # target_size = (1000, 1000)
+    # num_frames = video_loader.num_frames
+    # fps = 8000
+    # deg_per_frame = np.degrees(2138.46/60*2*np.pi) / fps
+    # angles = np.arange(num_frames) * deg_per_frame
 
     # pos = np.linspace(0, 2*np.pi, 8, endpoint=False) - np.radians(-4)
-    pos = np.linspace(0, 2*np.pi, 8, endpoint=False) - np.radians(4)
+    # pos = np.linspace(0, 2*np.pi, 8, endpoint=False) - np.radians(4)
 
 
     # video_processor.process_video(
@@ -256,5 +255,5 @@ if __name__ == "__main__":
     #     (rorate_img, (center, 20), {"direction": 1})
     # )
 
-    video_processor.rotate_video(center=center, angles=angles, target_size=target_size, pos=pos)
+    # video_processor.rotate_video(center=center, angles=angles, target_size=target_size, pos=pos)
 
