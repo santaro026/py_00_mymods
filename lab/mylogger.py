@@ -43,20 +43,21 @@ class MyLogger(logging.Logger):
     def set_all_formatters(self, formatter):
         for handler in self.handlers:
             handler.setFormatter(formatter)
-    def put_line(self, message, level=logging.INFO):
+    def binfo(self, message):
         self.set_all_formatters(self.blank_formatter)
-        self.log(level, message)
+        self.log(logging.INFO, message)
         self.set_all_formatters(self.full_formatter)
     def measure_time(self, name, mode):
         if mode == 's':
             st = time.perf_counter()
             self.cache[f"{name}_st"] = st
+            self.info(f"\"{name}\" start >>>>>>>>>>")
         elif mode == 'e':
             et = time.perf_counter()
             self.cache[f"{name}_et"] = et
             elapsed_time = et - self.cache[f"{name}_st"]
             self.cache[f"{name}_elapsed"] = elapsed_time
-            self.put_line(f">>> {name} elapsed time: {elapsed_time:.4f} sec")
+            self.info(f">>>>>>>>>> \"{name}\" completed, elapsed time: {elapsed_time:.4f} sec\n")
 
 
 if __name__ == '__main__':

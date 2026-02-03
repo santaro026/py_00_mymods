@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from scipy import signal
 from scipy import fft as scfft
 from numpy import fft as npfft
+eps = 1e-12
 
 from pathlib import Path
 
@@ -18,7 +19,6 @@ if __name__ == '__main__':
     import myutils, myplotter, config
 else:
     from . import myutils, myplotter
-    import config
 
 class Myfft:
     def __init__(self, t, ft, sample_rate):
@@ -238,14 +238,13 @@ class Myfft:
         mode = self.cache[-1]["mode"]
         _sp = self.sp
         if is_log:
-            eps = np.finfo(float).tiny
             if mode in ("psd", "spectrum"):
-                _sp = 10 * np.log10(np.maximum(_sp, eps))
+                _sp = 10 * np.log10(_sp + eps)
             elif mode == "magnitude":
-                _sp = 20 * np.log10(np.maximum(_sp, eps))
+                _sp = 20 * np.log10(_sp + eps)
             elif mode == "complex":
                 amp = np.abs(_sp)
-                _sp = 20 * np.log10(np.maximum(amp, eps))
+                _sp = 20 * np.log10(amp + eps)
             else:
                 pass
         if plot_mode == "plot":
@@ -264,19 +263,18 @@ class Myfft:
                 # axs[1].annotate(f'f: {round(freq[_p])}\na: {round(_h, 2)}', (freq[_p], f_abs_amp[_p]), textcoords='data', xytext=(_p, height_max), ha='center')
         return fig, axs
 
-    def make_spectrogram(self, window='hann', nperseg=None, noverlap=None, scaling="density", mode="psd", is_log=False, cmap="viridis", shading="auto", vrange=None, title='', yrange=[None, (0, 24000)], ylabel=[None, "frequency [Hz]"]):
+    def make_spectrogram(self, window='hann', nperseg=None, noverlap=None, scaling="density", mode="psd", is_log=False, cmap="viridis", shading="auto", vrange=None, title='', yrange=[None, (0, 24000)], ylabel=[None, "frequency [Hz]"], use_slider=False):
         # cmap: viridis, jet, gray, bone, ocean
         # shading: auto, flat, nearest, gouraud
         freq, t_segment, sxx = signal.spectrogram(x=self.ft, fs=self.sample_rate, window=window, nperseg=nperseg, noverlap=noverlap, scaling=scaling, mode=mode)
         if is_log:
-            eps = np.finfo(float).tiny
             if mode in ("psd", "spectrum"):
-                sxx = 10 * np.log10(np.maximum(sxx, eps))
+                sxx = 10 * np.log10(sxx + eps)
             elif mode == "magnitude":
-                sxx = 20 * np.log10(np.maximum(sxx, eps))
+                sxx = 20 * np.log10(sxx + eps)
             elif mode == "complex":
                 amp = np.abs(sxx)
-                sxx = 20 * np.log10(np.maximum(amp, eps))
+                sxx = 20 * np.log10(amp + eps)
             else:
                 pass
         tperseg = nperseg / self.sample_rate
@@ -293,6 +291,19 @@ class Myfft:
         pcm = axs[1].pcolormesh(t_segment, freq, sxx, cmap=cmap, shading=shading)
         if vrange:
             pcm.set_clim(vmin=vrange[0], vmax=vrange[1])
+        if use_slider:
+            from matplotlib.widgets import Slider
+            ax_vmin = plt.axes([0.1, 0.04, 0.65, 0.03])
+            ax_vmax = plt.axes([0.1, 0.02, 0.65, 0.03])
+            vmin_slider = Slider(ax_vmin, "vmin", sxx.min(), sxx.max(), valinit=sxx.min())
+            vmax_slider = Slider(ax_vmax, "vmax", sxx.min(), sxx.max(), valinit=sxx.max())
+            def update(val):
+                vmin = vmin_slider.val
+                vmax = vmax_slider.val
+                pcm.set_clim(vmin=vmin, vmax=vmax)
+                fig.canvas.draw_idle()
+            vmin_slider.on_changed(update)
+            vmax_slider.on_changed(update)
         return fig, axs
 
 def generate_periodic_data(duration, sample_rate, num_elements=1, freqs=None, amps=None, has_leakage=False, noise_level=0, noise_type="normal"):
@@ -324,17 +335,14 @@ def generate_periodic_data(duration, sample_rate, num_elements=1, freqs=None, am
     return t, ft, freqs, amps
 
 def pw2db(ft):
-    eps = np.finfo(float).tiny
-    db = 10 * np.log10(np.maximum(ft, eps))
+    db = 10 * np.log10(ft + eps)
     return db
 def mag2db(ft):
-    eps = np.finfo(float).tiny
-    db = 20 * np.log10(np.maximum(ft, eps))
+    db = 20 * np.log10(ft + eps)
     return db
 def complex2db(ft):
-    eps = np.finfo(float).tiny
     ft = np.abs(ft)
-    db = 20 * np.log10(np.maximum(ft, eps))
+    db = 20 * np.log10(ft + eps)
     return db
 
 def calc_analytic_psd(freqs, amps, bin_size=None, freq_axis=None):
@@ -499,8 +507,4 @@ if __name__ == '__main__':
 
 
     """
-
-
-
-
 

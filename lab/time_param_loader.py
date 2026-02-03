@@ -90,9 +90,9 @@ time_params = {
         "x": 0,
         "Ry": 0,
         "Rz": 0,
-        "a": 1,
+        "a": 2,
         "b": 1,
-        "omega_deform": 100,
+        "omega_deform": 0,
         "deformation_mode": "ellipse",
         "noise_type": "normal",
         "noise_max": 1
