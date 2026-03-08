@@ -1,6 +1,7 @@
 """
-Created on Wed Dec 03 19:18:42 2025
-@author: santaro
+Created on Mon Dec 01 16:00:30 2025
+@author: honda-shin
+
 
 
 """
@@ -33,6 +34,9 @@ else:
 import config
 
 class MyAudioEditor:
+    @staticmethod
+    def normalize_sound(sound, bit_depth):
+        return sound.astype(np.float64) / float(2**(bit_depth-1))
     def __init__(self, data_path, tempdir=None):
         self._data_path = data_path
         self._audio = AudioSegment.from_file(self._data_path)
@@ -41,13 +45,10 @@ class MyAudioEditor:
         self._duration = self._audio.duration_seconds
         self._sample_width = self._audio.sample_width
         self._bit_depth = self._sample_width * 8
-
         self.t = np.arange(0, self._duration, 1/self._sample_rate)
-        self.soundl = np.array(self._audio.get_array_of_samples())[0::self._channels]
-        self.soundr = np.array(self._audio.get_array_of_samples())[1::self._channels]
-
+        self.soundl = MyAudioEditor.normalize_sound(np.array(self._audio.get_array_of_samples())[0::self._channels], self._bit_depth)
+        self.soundr = MyAudioEditor.normalize_sound(np.array(self._audio.get_array_of_samples())[1::self._channels], self._bit_depth)
         self.tempdir = config.ROOT / ".tmp" if tempdir is None else tempdir
-
     @property
     def data_path(self):
         return self._data_path
@@ -69,7 +70,6 @@ class MyAudioEditor:
     @property
     def bit_width(self):
         return self._bit_depth
-
     def __repr__(self):
         return (
                 f"data_path: {self.data_path}\n"
@@ -249,6 +249,3 @@ if __name__ == "__main__":
 
     # video_editor = MyVideoEditor(config.ROOT/"data"/"video_sample.mp4")
     # print(repr(video_editor))
-
-
-

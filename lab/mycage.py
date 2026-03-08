@@ -119,7 +119,7 @@ class SimpleCage:
             self.p_markers_noise[:, i, :] = self.transformer_CI.transform_coord(self.p_markers_noise_lcs[:, i, :], towhich='toglobal')
 
     def time_series_data2(self, fps=10000, duration=1, omega_rot=40*np.pi, omega_rev=40*np.pi, r_rev=0.4, a=1, b=1, p0_angle=np.pi/2, omega_deform=0, noise_type="normal", noise_max=1):
-        num_frames = fps * duration + 1
+        num_frames = int(fps * duration) + 1
         t = np.linspace(0, duration , num_frames)
         dt = 1 / fps
         x = np.zeros(num_frames)
