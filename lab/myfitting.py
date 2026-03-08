@@ -522,29 +522,22 @@ def calc_mindist_p2ellipse(points, a, b, mode="newton", tol=1e-12, max_iter=100)
     p, q = points[:, 0], points[:, 1]
     if mode == "newton":
         is_converge = False
-        P, Q = np.abs(p), np.abs(q)
         # theta = np.arctan2(Q*a, P*b) # initial value
         theta = np.arctan2(q*a, p*b) # initial value
         for _ in range(max_iter):
             ct = np.cos(theta)
             st = np.sin(theta)
-            x = a * ct
-            y = b * st
-            dx = x - P
-            dy = y - Q
-            g = dx * (-a * st) + dy * (b * ct)
-            gp = (-a * ct) * (-a * st) + dx * (-a * ct) + (b * st)*(b * ct) + dy * (-b * st)
-            step = g / gp
+            f = (a**2 - b**2) * ct * st - p * a * st + q * b * ct
+            f_prime = (a**2 - b**2) * (ct**2 - st**2) - p * a * ct - q * b * st
+            step = f / f_prime
             theta_new = theta - step
             if np.all(np.abs(step) < tol):
                 theta = theta_new
                 is_converge = True
                 break
             theta = theta_new
-        sp, sq = np.sign(p), np.sign(q)
-        sp, sq = np.where(sp==0, 1, sp), np.where(sq==0, 1, sq)
-        x = a * np.cos(theta) * sp
-        y = b * np.sin(theta) * sq
+        x = a * np.cos(theta)
+        y = b * np.sin(theta)
         r = np.sqrt((x-p)**2 + (y-q)**2)
         theta = np.arctan2(y/b, x/a)
     elif mode == "algebra":
@@ -793,7 +786,7 @@ if __name__ == '__main__':
     cs = ['r', 'b', 'g', 'm', 'y', 'k', 'c', 'lightblue']
     for i in range(8):
         ax.plot(t, infos[:, i], c=cs[i], lw=1)
-    # ax.set_ylim(0, 1)
+    ax.set_ylim(0, 1)
 
     datalist = [
         # {"id": 0, "data": xyr[:, 0], "lw": 4, "c": 'g', "alpha": 0.2},
