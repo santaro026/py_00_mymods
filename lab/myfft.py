@@ -12,13 +12,14 @@ from scipy import signal
 from scipy import fft as scfft
 from numpy import fft as npfft
 eps = 1e-12
+p0 = 20e-6
 
 from pathlib import Path
 
 if __name__ == '__main__':
-    import myutils, myplotter, config
+    import myplotter, config
 else:
-    from . import myutils, myplotter
+    from . import myplotter
 
 class Myfft:
     def __init__(self, t, ft, sample_rate):
@@ -91,7 +92,7 @@ class Myfft:
         f_start = np.where(self.t>=trange[0])[0][0]
         f_end = np.where(self.t<=trange[1])[0][-1]
         return (f_start, f_end)
-    def split_data(self, fft_size, overlap=0.5, lastseg="pad", tranges=None):
+    def _split_data(self, fft_size, overlap=0.5, lastseg="pad", tranges=None):
         franges = []
         if tranges:
             for trange in tranges:
@@ -151,7 +152,7 @@ class Myfft:
         window = self._get_window(window_func, n, fft_backend)
         pw_window = np.mean(window**2)
         rms_window = np.sqrt(pw_window)
-        # avg_window = sum(window)/n
+        avg_window = sum(window)/n
         ft_windowed = ft * window
         if is_real:
             sp = FFT.rfft(ft_windowed)
@@ -176,17 +177,15 @@ class Myfft:
                 sp[1:-1] *= 2
             else:
                 sp[1:] *= 2
-            # if window_func in ("hann", "hanning"):
-                # sp[1:-1] *= 1.5
         elif mode == "magnitude":
             sp = self._normalize_amplitude_scale(abs(sp), n)
-            sp /= rms_window
-            # sp /= avg_window
+            # sp /= rms_window # keep energy
+            sp /= avg_window # keep amplitude
         else:
             raise ValueError(f"invalid argument: mode {mode}")
         return freq, sp
-    def compute_segmented_fft(self, mode="psd", tranges=None, fft_size=2**12, overlap=0.5, lastseg="pad", window_func='hann', is_real=True, use_fftshift=True, fft_backend="scipy"):
-        _cache = self.split_data(fft_size=fft_size, overlap=overlap, lastseg=lastseg, tranges=tranges)
+    def compute_segmented_fft(self, mode="psd", tranges=None, fft_size=2**12, overlap=0.5, lastseg="pad", window_func='hann', is_log=False, is_real=True, use_fftshift=True, fft_backend="scipy"):
+        _cache = self._split_data(fft_size=fft_size, overlap=overlap, lastseg=lastseg, tranges=tranges)
         res = []
         for _t, _ft in zip(self.t_splitted, self.ft_splitted):
             if len(_t) < fft_size:
@@ -200,26 +199,36 @@ class Myfft:
         for i in range(len(res)):
             sp += res[i][1]
         sp = sp/(len(res))
-        self.sp = sp
+        self.sp = sp.copy()
         self.freq = freq
+        if is_log:
+            if mode in ("psd", "spectrum"):
+                sp = 10 * np.log10(sp + eps)
+            elif mode == "magnitude":
+                sp = 20 * np.log10(sp + eps)
+            elif mode == "complex":
+                amp = np.abs(sp)
+                sp = 20 * np.log10(amp + eps)
+            else:
+                pass
         _cache2 = {
             "mode": mode,
             "window_func": window_func,
             "sp": self.sp,
-            "freq": freq
+            "freq": self.freq
         }
         _cache.update(_cache2)
         self.cache.append(_cache)
         return freq, sp
-    def plot_result(self, plot_mode="plot", is_log=True, show_peaks=True, findpeak_height=10**-3, findpeak_distance=1, xrange=None, yrange=None, xtick=[1, 2000], ytick=None, xsigf=0, ysigf=0, ylabel=["time [sec]", "amplitude"], notell=""):
-        t_per_window = self.cache[-1]["fft_size"] / self.sample_rate
+    def plot_result(self, cache_id=-1, plot_mode="plot", is_log=True, show_peaks=True, findpeak_height=10**-3, findpeak_distance=1, xrange=None, yrange=None, xtick=[1, 2000], ytick=None, xsigf=0, ysigf=0, ylabel=["time [sec]", "amplitude"], notell=""):
+        t_per_window = self.cache[cache_id]["fft_size"] / self.sample_rate
         _x = self.t[-1]*0.02
         plotter = myplotter.MyPlotter(sizecode=myplotter.PlotSizeCode.LANDSCAPE_FIG_21)
-        notelr = f'sample rate: {self.sample_rate:.0f} [/sec], window func: {self.cache[-1]["window_func"]}\nfft_size: {self.cache[-1]["fft_size"]} ({t_per_window*1000:.1f} [ms]), overlap: {self.cache[-1]["overlap"]}, zero padding: {self.cache[-1]["zero_padding"]}'
+        notelr = f'sample rate: {self.sample_rate:.0f} [/sec], window func: {self.cache[cache_id]["window_func"]}\nfft_size: {self.cache[cache_id]["fft_size"]} ({t_per_window*1000:.1f} [ms]), overlap: {self.cache[cache_id]["overlap"]}, zero padding: {self.cache[cache_id]["zero_padding"]}'
         if xrange is None: xrange = [(self.t[0], self.t[-1]), (0, self.sample_rate//2)]
         fig, axs = plotter.myfig(xrange=xrange, yrange=yrange, xtick=xtick, ytick=ytick, xsigf=xsigf, ysigf=ysigf, xlabel=["time [sec]", "frequency [Hz]"], ylabel=ylabel, notell=notell, notelr=notelr)
         axs[0].plot(self.t, self.ft, c='k', lw=0.2, alpha=1)
-        for trange in self.cache[-1]["tranges"]:
+        for trange in self.cache[cache_id]["tranges"]:
             st, et = trange[0], trange[-1]
             axs[0].axvline(st, c='b', lw=0.4, alpha=0.2)
             axs[0].axvline(et, c='b', lw=0.4, alpha=0.2)
@@ -227,7 +236,7 @@ class Myfft:
         axs[0].text(0, 0.96, f"window size: {t_per_window*1000:.1f} [ms]", fontsize=8, transform=axs[0].transAxes)
         axs[0].axvline(x=_x, c='g', lw=0.4)
         axs[0].axvline(x=_x+t_per_window, c='g', lw=0.4)
-        mode = self.cache[-1]["mode"]
+        mode = self.cache[cache_id]["mode"]
         _sp = self.sp
         if is_log:
             if mode in ("psd", "spectrum"):
@@ -254,9 +263,7 @@ class Myfft:
                 axs[1].annotate(f'{round(self.freq[_p])}\n{round(_h, 2)}', (self.freq[_p], _sp[_p]), textcoords='offset points', xytext=(0, 40), ha='center', arrowprops=arrowprops)
                 # axs[1].annotate(f'f: {round(freq[_p])}\na: {round(_h, 2)}', (freq[_p], f_abs_amp[_p]), textcoords='data', xytext=(_p, height_max), ha='center')
         return fig, axs
-    def make_spectrogram(self, window='hann', nperseg=None, noverlap=None, scaling="density", mode="psd", is_log=False, cmap="viridis", shading="auto", vrange=None, title='', yrange=[None, (0, 24000)], ylabel=[None, "frequency [Hz]"], use_slider=False):
-        # cmap: viridis, jet, gray, bone, ocean
-        # shading: auto, flat, nearest, gouraud
+    def compute_spectrogram(self, window='hann', nperseg=None, noverlap=None, scaling="density", mode="psd", is_log=True):
         freq, t_segment, sxx = signal.spectrogram(x=self.ft, fs=self.sample_rate, window=window, nperseg=nperseg, noverlap=noverlap, scaling=scaling, mode=mode)
         if is_log:
             if mode in ("psd", "spectrum"):
@@ -268,9 +275,14 @@ class Myfft:
                 sxx = 20 * np.log10(amp + eps)
             else:
                 pass
+        return freq, t_segment, sxx
+    def see_spectrogram(self, window='hann', nperseg=None, noverlap=None, scaling="density", mode="psd", is_log_freq=False, is_log_sp=False, cmap="viridis", shading="auto", vrange=None, title='', yrange=[None, (0, 24000)], ylabel=[None, "frequency [Hz]"], use_slider=False):
+        # cmap: viridis, jet, gray, bone, ocean
+        # shading: auto, flat, nearest, gouraud
+        freq, t_segment, sxx = self.compute_spectrogram(window=window, nperseg=nperseg, noverlap=noverlap, scaling=scaling, mode=mode, is_log=is_log_sp)
         tperseg = nperseg / self.sample_rate
         _x = self.t[-1]*0.2
-        axis_mode = "logarithmic" if is_log else "linear"
+        axis_mode = "logarithmic" if is_log_freq else "linear"
         notelr = f'sample rate: {self.sample_rate:.0f} [/sec]\nwindow func: {window}, nperseg: {nperseg} ({tperseg*1000:.1f} [ms]), noverlap: {noverlap}\namp axis: {axis_mode}'
         notell = ""
         plotter = myplotter.MyPlotter(sizecode=myplotter.PlotSizeCode.LANDSCAPE_FIG_21)
@@ -297,15 +309,15 @@ class Myfft:
             vmax_slider.on_changed(update)
         return fig, axs
 
-def pw2db(ft):
-    db = 10 * np.log10(ft + eps)
+def pw2db(signal, x0=1):
+    db = 10 * np.log10((signal + eps) / x0**2)
     return db
-def mag2db(ft):
-    db = 20 * np.log10(ft + eps)
+def mag2db(signal, x0=1):
+    db = 20 * np.log10((signal + eps) / x0)
     return db
-def complex2db(ft):
-    ft = np.abs(ft)
-    db = 20 * np.log10(ft + eps)
+def complex2db(signal, x0=1):
+    signal = np.abs(signal)
+    db = 20 * np.log10((signal + eps) / x0)
     return db
 
 def calc_analytic_psd(freqs, amps, bin_size=None, freq_axis=None):

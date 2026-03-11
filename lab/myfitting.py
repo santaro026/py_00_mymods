@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from scipy import linalg
 
 from pathlib import Path
+import warnings
 
 class MyFitting:
     def __init__(self, points):
@@ -266,7 +267,7 @@ def lsm_for_line(points, allow_nan=False):
     return ab, info
 
 #### least squares fitting of circles
-def lsm_for_circle(points, allow_nan=False):
+def kasa_circle(points, allow_nan=False):
     if points.shape[1] != 2:
         raise ValueError("argument of points must be shape of (N, 2).")
     has_nan_or_inf = np.isnan(points).any() or np.isinf(points).any()
@@ -302,6 +303,64 @@ def lsm_for_circle(points, allow_nan=False):
         "geom_error_max": float(np.max(geom_err)),
     }
     return xyr, info
+
+def lsm_for_ellipse():
+    warnings.warn(
+        f"{lsm_for_ellipse.__name__} is deprecated and will be removed in a future version."
+        f"please use kasa_circle instead.",
+        category=DeprecationWarning,
+        stacklevel=2
+    )
+    return kasa_circle()
+
+def taubin_circle(points, allow_nan=False):
+    if points.shape[1] != 2:
+        raise ValueError("argument of points must be shape of (N, 2).")
+    has_nan_or_inf = np.isnan(points).any() or np.isinf(points).any()
+    if not allow_nan and has_nan_or_inf:
+        return np.full(3, np.nan), None
+    valid_points_mask = ~np.isnan(points).any(axis=1) & ~np.isinf(points).any(axis=1)
+    valid_points_id = np.where(valid_points_mask)[0]
+    if len(valid_points_id) < 3:
+        raise ValueError(f"need at least 3 valid points")
+    x = points[valid_points_id, 0]
+    y = points[valid_points_id, 1]
+    num_points = len(x)
+    mx = np.mean(x)
+    my = np.mean(y)
+    zx = x - mx
+    zy = y - my
+    z = zx**2 + zy**2
+    mz = np.mean(z)
+    Z = np.column_stack([z, zx, zy, np.ones(len(x))])
+    M = (Z.T @ Z) / len(x)
+    P = np.zeros((4, 4))
+    P[0, 0] = 8 * mz
+    P[0, 3] = 2
+    P[3, 0] = 2
+    P[1, 1] = 1
+    P[2, 2] = 1
+    eigenvalues, eigenvectors = linalg.eig(M)
+    idx = np.argsort(eigenvalues)
+    A_vec = None
+    for i in idx:
+        if eigenvalues[i] > 0:
+            A_vec = eigenvalues[:, i]
+            break
+    if A_vec is None:
+        print(f"valid eigenvalues was not found.")
+        return np.full(3, np.nan), None
+    a, b1, b2, c = A_vec
+    cx_rel = -b1 / (2 * a)
+    cy_rel = -b2 / (2 * a)
+    r = np.sqrt((b1**2 + b2**2 - 4 * a * c) / (4 * a**2))
+    cx = cx_rel + mx
+    cy = cy_rel + my
+    return np.array([cx, cy, r]), info
+
+
+
+
 
 def lsm_for_circles(points):
     """
@@ -441,9 +500,11 @@ def fitzgibbon_ellipse(points, allow_nan=False):
     C[1, 1] = -1
     C[2, 0] = 2
     eigvals, eigvecs = linalg.eig(S, C) # solve the generalized eigenvalue problem S*a = lambda*C*a
-    pos_idx = np.where((eigvals > 0) & (np.isfinite(eigvals)))[0]
+    # pos_idx = np.where((eigvals > 0) & (np.isfinite(eigvals)))[0]
+    pos_idx = np.where((eigvals.real > -1e-12) & (np.isfinite(eigvals)))[0]
     if len(pos_idx) == 0:
         print(f"markers: {points}")
+        print(f"eigenvalues: {eigvals}")
         print("no valid eigenvalue found, check the input points.")
         return np.full(6, np.nan), None
         # raise ValueError("no valid eigenvalue found, check the input points.")
@@ -488,7 +549,7 @@ def fitzgibbon_ellipse(points, allow_nan=False):
         "eigenvalues": eigvals[pos_idx],
         "eigenvectors": eigvecs[:, pos_idx]
     }
-    return abcdef, info
+    return abcdef, xyabtheta, info
 
 def abcdef2xyabtheta(abcdef):
     a, b, c, d, e, f = abcdef
@@ -723,6 +784,47 @@ class SimpleCage:
 
 if __name__ == '__main__':
     print('---- test ----')
+    #### ellipse
+    rng = np.random.default_rng()
+    num_nodes = 20
+    node = np.linspace(0, 2*np.pi, num_nodes)
+    a = 8
+    b = 4
+    x = a * np.cos(node)
+    y = b * np.sin(node)
+    p = np.column_stack([x, y])
+    print(f"data points: {p.shape}")
+
+    xyr, info = lsm_for_circle(p)
+    abcdef, xyabtheta, info = fitzgibbon_ellipse(p)
+
+    x_cfit = xyr[2] * np.cos(node) + xyr[0]
+    y_cfit = xyr[2] * np.sin(node) + xyr[1]
+
+    x_efit = xyabtheta["axes"][0] * np.cos(node) + xyabtheta["center"][0]
+    y_efit = xyabtheta["axes"][1] * np.sin(node) + xyabtheta["center"][1]
+
+
+    xyrange = -10
+    import myplotter
+    plotter = myplotter.MyPlotter(myplotter.PlotSizeCode.SQUARE_FIG)
+    fig, axs = plotter.myfig()
+    ax = axs[0]
+    ax.plot(x, y, lw=2, c='k', alpha=0.4)
+
+    ax.plot(x_cfit, y_cfit, lw=4, c='r', ls='--', alpha=0.4)
+    ax.plot(x_efit, y_efit, lw=4, c='b', ls='--', alpha=0.4)
+
+    ax.set(xlim=(-xyrange, xyrange), ylim=(-xyrange, xyrange))
+    ax.set_aspect(1)
+    ax.axhline(y=0, lw=0.4, c='k')
+    ax.axvline(x=0, lw=0.4, c='k')
+    plt.show()
+
+
+
+
+
     #### line
     # t = np.linspace(0, 10, 20)
     # rng = np.random.default_rng(seed=0)
@@ -736,6 +838,8 @@ if __name__ == '__main__':
     # d, theta = calc_mindist_p2ellipse(ps, 2, 1, max_iter=100000)
     # print(d, np.degrees(theta))
 
+
+    """
     duration = 0.2
     fps = 10000
     num_frames = int(duration * fps) + 1
@@ -743,9 +847,9 @@ if __name__ == '__main__':
     import mycage
     cage = mycage.SimpleCage(name='', PCD=50, ID=48, OD=52, width=10, num_pockets=8, num_markers=8, num_mesh=100, Dp=6.25, Dw=5.953)
     t = np.arange(num_frames) / fps
-    a = 2
+    a = 4
     b = 1
-    cage.time_series_data2(fps=fps, duration=duration, omega_rot=40*np.pi, omega_rev=40*np.pi, r_rev=0, a=a, b=b, omega_deform=10*np.pi, noise_type="normal", noise_max=0.01, p0_angle=np.pi/15)
+    cage.time_series_data2(fps=fps, duration=duration, omega_rot=40*np.pi, omega_rev=40*np.pi, r_rev=2, a=a, b=b, omega_deform=10*np.pi, noise_type="normal", noise_max=0.01, p0_angle=np.pi/15)
     import mycoord
     transformer = mycoord.CoordTransformer3D(coordsys_name="cage_coordsys", local_origin=np.zeros((1, 3)), euler_angles=np.zeros(3), rot_order='zyx')
     points_zero = cage.make_cage_points(num_frames=1, num_points=8, x_value=5, a=25, b=25, deform_angle=0, transformer=transformer)[0][:, :, 1:]
@@ -779,14 +883,7 @@ if __name__ == '__main__':
         abcdef[i], info = fitzgibbon_ellipse(markers[i], allow_nan=False)
         _xyabtheta = abcdef2xyabtheta(abcdef[i])
         xyabtheta_fitzgibbon[i] = _xyabtheta["center"][0], _xyabtheta["center"][1], _xyabtheta["axes"][0], _xyabtheta["axes"][1], _xyabtheta["angle"]
-        infos.append(info["geom_error"])
-
-    infos = np.array(infos)
-    fig, ax = plt.subplots()
-    cs = ['r', 'b', 'g', 'm', 'y', 'k', 'c', 'lightblue']
-    for i in range(8):
-        ax.plot(t, infos[:, i], c=cs[i], lw=1)
-    ax.set_ylim(0, 1)
+    print(info)
 
     datalist = [
         # {"id": 0, "data": xyr[:, 0], "lw": 4, "c": 'g', "alpha": 0.2},
@@ -802,9 +899,9 @@ if __name__ == '__main__':
         # {"id": 1, "data": xyr2_defect[:, 1], "lw": 1, "c": 'b', "alpha": 0.8},
         # {"id": 2, "data": xyr2_defect[:, 2], "lw": 1, "c": 'b', "alpha": 0.8},
 
-        {"id": 0, "data": xyabtheta[:, 0], "lw": 1, "c": 'b', "alpha": 1},
-        {"id": 1, "data": xyabtheta[:, 1], "lw": 1, "c": 'b', "alpha": 1},
-        {"id": 2, "data": xyabtheta[:, 2], "lw": 1, "c": 'b', "alpha": 1},
+        {"id": 0, "data": xyabtheta[:, 0], "lw": 4, "c": 'b', "alpha": 0.4},
+        {"id": 1, "data": xyabtheta[:, 1], "lw": 4, "c": 'b', "alpha": 0.4},
+        {"id": 2, "data": xyabtheta[:, 2], "lw": 4, "c": 'b', "alpha": 0.4},
         # {"id": 2, "data": xyabtheta[:, 3], "lw": 1, "c": 'g', "alpha": 1},
         # {"id": 0, "data": xyabtheta_defect[:, 0], "lw": 8, "c": 'm', "alpha": 0.2},
         # {"id": 1, "data": xyabtheta_defect[:, 1], "lw": 8, "c": 'm', "alpha": 0.2},
@@ -864,7 +961,7 @@ if __name__ == '__main__':
     axs[2].set(ylim=(-40, 40))
 
 
-    f = 1000
+    f = 200
     node = np.linspace(0, 1, 100)
     x_circle = xyr[f, 2] * np.cos(2*np.pi*node) + xyr[f, 0]
     y_circle = xyr[f, 2] * np.sin(2*np.pi*node) + xyr[f, 1]
@@ -926,3 +1023,4 @@ if __name__ == '__main__':
 
 
 
+    """
