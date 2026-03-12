@@ -1,5 +1,4 @@
-"""
-Created on Wed Dec 17 22:03:47 2025
+""" Created on Wed Dec 17 22:03:47 2025
 @author: santaro
 
 
@@ -14,231 +13,73 @@ from pathlib import Path
 import warnings
 
 class MyFitting:
-    def __init__(self, points):
+    def __init__(self, points, name=""):
+        self.name = name
         self._points = points
-        self._cache = []
     @property
     def points(self):
         return self._points
-    @property
-    def cache(self):
-        return self._cache
 
     def lsm_for_line(self, allow_nan=False):
-        points = self.points
-        if points.shape[1] != 2:
-            raise ValueError("argument of points must be shape of (N, 2).")
-        has_nan_or_inf = np.isnan(points).any() or np.isinf(points).any()
-        if not allow_nan and has_nan_or_inf:
-            return np.full(3, np.nan), None
-        valid_mask = ~np.isnan(points).any(axis=1) & ~np.isinf(points).any(axis=1)
-        valid_id = np.where(valid_mask)[0]
-        x = points[valid_id, 0]
-        y = points[valid_id, 1]
-        num_points = len(x)
-        M1 = np.vstack([x, np.ones(num_points)]).T
-        ab, residuals, rank, s = np.linalg.lstsq(M1, y, rcond=None) # ab is slope and intercept
-        info = {
-            "rss": float(residuals[0]) if residuals.size > 0 else None,
-            "rank": int(rank),
-            "singular_values": s,
-            "num_points": len(x),
-            "valid_indices": valid_id
-        }
-        # M2 = np.array(y)
-        # ab = np.linalg.inv(M1.T @ M1) @ M1.T @ M2
-        _cache = {
-            "method": "lsm_for_line",
-            "shape": "line",
-            "ab": ab,
-            "info": info,
-        }
-        self._cache.append(_cache)
-        return ab, info
+        return lsm_for_line(self.points, allow_nan=allow_nan)
+    def kasa_circle(self, allow_nan=False):
+        return kasa_circle(self.points, allow_nan=allow_nan)
+    def taubin_circle(self, allow_nan=False):
+        return taubin_circle(self.points, allow_nan=allow_nan)
+    def lsm_for_ellipse(self, allow_nan=False):
+        return lsm_for_ellipse(self.points, allow_nan=allow_nan)
+    def fitzgibbon_ellipse(self, allow_nan=False):
+        return fitzgibbon_ellipse(self.points, allow_nan=allow_nan)
 
-    def lsm_for_circle(self, points, allow_nan=False):
-        if points.shape[1] != 2:
-            raise ValueError("argument of points must be shape of (N, 2).")
-        has_nan_or_inf = np.isnan(points).any() or np.isinf(points).any()
-        if not allow_nan and has_nan_or_inf:
-            return np.full(3, np.nan), None
-        valid_points_mask = ~np.isnan(points).any(axis=1) & ~np.isinf(points).any(axis=1)
-        valid_points_id = np.where(valid_points_mask)[0]
-        if len(valid_points_id) < 3:
-            raise ValueError(f"need at least 3 valid points")
-        x = points[valid_points_id, 0]
-        y = points[valid_points_id, 1]
-        num_points = len(x)
-        M1 = np.vstack([x, y, np.ones(num_points)]).T
-        M2 = -(x**2 + y**2)
-        coef, residuals, rank, s = np.linalg.lstsq(M1, M2, rcond=None)
-        A, B, C = coef
-        # A, B, C = np.dot(np.linalg.inv(np.dot(M1.T, M1)), np.dot(M1.T, M2))
-        cx, cy = -A/2, -B/2
-        r = (cx**2 + cy**2 - C)**0.5
-        xyr = np.array([cx, cy, r])
-        d_center = np.sqrt((x - cx)**2 +(y - cy)**2)
-        geom_err = np.abs(d_center - r)
-        info = {
-            "rss": float(residuals[0]) if residuals.size > 0 else None,
-            "rank": int(rank),
-            "singular_values": s,
-            "num_points": len(x),
-            "num_valid_points": len(valid_points_id),
-            "valid_points_indices": valid_points_id,
-            "radii": d_center,
-            "geom_error_mean": float(np.mean(geom_err)),
-            "geom_error_std": float(np.std(geom_err)),
-            "geom_error_max": float(np.max(geom_err)),
-        }
-        _cache = {
-            "method": "lsm_for_circle",
-            "shape": "circle",
-            "xyr": xyr,
-            "info": info,
-        }
-        self._cache.append(_cache)
-        return xyr, info
+    def compare(self, fitting_list=[], allow_nan=False):
+        results = []
+        for f in fitting_list:
+            res, info = f(allow_nan=allow_nan)
+            result = {
+                "fitting": f.__name__,
+                "result": res,
+                "info": info,
+            }
+            results.append(result)
+        import myplotter
+        plotter = myplotter.MyPlotter(myplotter.PlotSizeCode.SQUARE_FIG)
+        fig, axs = plotter.myfig()
+        ax = axs[0]
+        cmap = plt.get_cmap("tab20")
+        colors = [cmap(i) for i in range(len(results))]
+        for i, res in enumerate(results):
+            fitting = res["fitting"]
+            result = res["result"]
+            info = res["info"]
+            if "line" in fitting:
+                x, y = self.make_line(*result, n=10)
+            elif "circle" in fitting:
+                x, y = self.make_circle(*result, n=500)
+            elif "ellipse" in fitting:
+                print(f"********** {fitting}: {result}")
+                x, y = self.make_ellipse(*result, n=500)
+            ax.plot(x, y, lw=1, c=colors[i], alpha=1, label=fitting)
+        ax.scatter(self.points[:, 0], self.points[:, 1], s=100, c='grey')
+        ax.legend()
+        ax.set_aspect(1)
+        return fig, ax
 
-    def lsm_for_ellipse(self, points, allow_nan=False):
-        """
-        Least squares fitting of ellipse
-        points: shape of (num_points, 2)
-
-        """
-        if points.shape[1] != 2:
-            raise ValueError("argument of points must be shape of (N, 2).")
-        has_nan_or_inf = np.isnan(points).any() or np.isinf(points).any()
-        if not allow_nan and has_nan_or_inf:
-            return np.full(5, np.nan), None
-        valid_points_mask = ~np.isnan(points).any(axis=1) & ~np.isinf(points).any(axis=1)
-        valid_points_id = np.where(valid_points_mask)[0]
-        if len(valid_points_id) < 3:
-            raise ValueError(f"need at least 3 valid points")
-        x = points[valid_points_id, 0]
-        y = points[valid_points_id, 1]
-        num_points, _ = points.shape
-        num_points_valid = len(valid_points_id)
-        M1 = np.vstack([x*y, y**2, x, y, np.ones(num_points_valid)]).T
-        M2 = -x**2
-        coef, residuals, rank, s = np.linalg.lstsq(M1, M2, rcond=None)
-        A, B, C, D, E = coef
-        cx = (A*D - 2*B*C) / (4*B - A**2)
-        cy = (A*C - 2*D) / (4*B - A**2)
-        if abs(A/(1-B)) > 10**14: # first aid to avoid singular error
-            a , b = np.nan, np.nan
-            # a , b = 0, 0
-            theta = np.radians(45)
-        else:
-            theta = np.arctan(A/(1-B)) / 2
-            # theta = np.atan2(A, (1-B)) / 2
-            sin = np.sin(theta)
-            cos = np.cos(theta)
-            a = np.sqrt(
-                (cx*cos + cy*sin)**2 - E*cos**2
-                    - ((cx*sin - cy*cos)**2 - E*sin**2)
-                        *(sin**2 - B*cos**2) / (cos**2 - B*sin**2)
-                )
-            b = np.sqrt(
-                (cx*sin - cy*cos)**2 - E*sin**2
-                    - ((cx*cos + cy*sin)**2 - E*cos**2)
-                        *(cos**2 - B*sin**2) / (sin**2 - B*cos**2)
-                )
-        result = [cx, cy, a, b, theta]
-        d_center = np.sqrt((x - cx)**2 +(y - cy)**2)
-        geom_err = np.full(num_points, np.nan)
-        sin = np.sin(theta)
-        cos = np.cos(theta)
-        ux = points[:, 0] - cx
-        uy = points[:, 1] - cy
-        x_local = ux * cos + uy * sin
-        y_local = -ux * sin + uy * cos
-        for i in range(num_points):
-            geom_err[i], _ = calc_mindist_p2ellipse(np.array([x_local[i], y_local[i]]), a, b)
-        info = {
-            "rss": float(residuals[0]) if residuals.size > 0 else None,
-            "rank": int(rank),
-            "singular_values": s,
-            "num_points": len(x),
-            "num_valid_points": num_points_valid,
-            "valid_points_indices": valid_points_id,
-            "radii": d_center,
-            "geom_error_mean": float(np.mean(geom_err)),
-            "geom_error_std": float(np.std(geom_err)),
-            "geom_error_max": float(np.max(geom_err)),
-        }
-        _cache = {
-            "method": "lsm_for_ellipse",
-            "shape": "ellipse",
-            "xyabtheta": result,
-            "info": info,
-        }
-        self._cache.append(_cache)
-        return result, info
-
-    def fitzgibbon_ellipse(self, points, allow_nan=False):
-        if points.shape[1] != 2:
-            raise ValueError("argument of points must be shape of (N, 2).")
-        has_nan_or_inf = np.isnan(points).any() or np.isinf(points).any()
-        if not allow_nan and has_nan_or_inf:
-            return np.full(5, np.nan), None
-        valid_points_mask = ~np.isnan(points).any(axis=1) & ~np.isinf(points).any(axis=1)
-        valid_points_id = np.where(valid_points_mask)[0]
-        if len(valid_points_id) < 3:
-            raise ValueError(f"need at least 3 valid points")
-        x = points[valid_points_id, 0]
-        y = points[valid_points_id, 1]
-        num_points, _ = points.shape
-        num_points_valid = len(valid_points_id)
-        D = np.vstack([x**2, x*y, y**2, x, y, np.ones_like(x)]).T
-        S = np.dot(D.T, D)
-        C = np.zeros((6, 6))
-        C[0, 2] = 2
-        C[1, 1] = -1
-        C[2, 0] = 2
-        eigvals, eigvecs = linalg.eig(S, C)
-        pos_idx = np.where((eigvals > 0) & (np.isfinite(eigvals)))[0]
-        abcdef = eigvecs[:, pos_idx].real.flatten()
-        print(abcdef.shape)
-        return abcdef
-
-    def abcdef2xyabtheta(abcdef):
-        a, b, c, d, e, f = abcdef
-        delta = b**2 - 4*a*c
-        cx = (b*e - 2*c*d) / (-delta)
-        cy = (b*d - 2*a*e) / (-delta)
-        theta = 0.5 * np.arctan2(b, a-c)
-        up = 2 * (a * cx**2 + b * cx * cy + c * cy**2 -f)
-        down1 = a + c - np.sqrt((a - c)**2 + b**2)
-        down2 = a + c + np.sqrt((a - c)**2 + b**2)
-        semi_major = np.sqrt(max(0, up/down1))
-        semi_minor = np.sqrt(max(0, up/down2))
-        return {
-            "center": np.array([cx, cy]),
-            # "axes": np.array([semi_minor, semi_major]),
-            "axes": np.array([min(semi_minor, semi_major), max(semi_minor, semi_major)]),
-            "angle": theta
-        }
-
-
-    def check(self, cache_id=0):
-        fig, ax = plt.subplots(figsize=(8, 8))
-        ax.grid()
-        _cache = self.cache[cache_id]
-        xrange = (np.nanmin(self.points.T[0]), np.nanmax(self.points.T[0]))
-        xmin = xrange[0] - (xrange[1] - xrange[0])*0.2
-        xmax = xrange[1] + (xrange[1] - xrange[0])*0.2
-        t = np.linspace(xmin, xmax, 100, endpoint=True)
-        if _cache["shape"] == "line":
-            ab = _cache["ab"]
-            x = t
-            y = ab[0] * x + ab[1]
-            ax.plot(x, y, lw=1, c='b')
-            ax.scatter(self.points[:, 0], self.points[:, 1], c='k', s=20)
-        plt.show()
-
-
-
+    def make_line(self, a, b, n):
+        x_min = np.min(self.points[:, 0])
+        x_max = np.max(self.points[:, 0])
+        x = np.linspace(x_min, x_max, n)
+        y = a * x + b
+        return x, y
+    def make_circle(self, cx, cy, r, n):
+        t = np.linspace(0, 2*np.pi, n, endpoint=True)
+        x = r * np.cos(t) + cx
+        y = r * np.sin(t) + cy
+        return x, y
+    def make_ellipse(self, cx, cy, a, b, theta, n):
+        t = np.linspace(0, 2*np.pi, n, endpoint=True)
+        x = a * np.cos(t) + cx
+        y = b * np.sin(t) + cy
+        return x, y
 
 
 #### least squares fitting of line
@@ -288,7 +129,7 @@ def kasa_circle(points, allow_nan=False):
     cx, cy = -A/2, -B/2
     r = (cx**2 + cy**2 - C)**0.5
     xyr = np.array([cx, cy, r])
-    d_center = np.sqrt((x - cx)**2 +(y - cy)**2)
+    d_center = np.sqrt((x - cx)**2 + (y - cy)**2)
     geom_err = np.abs(d_center - r)
     info = {
         "rss": float(residuals[0]) if residuals.size > 0 else None,
@@ -304,14 +145,14 @@ def kasa_circle(points, allow_nan=False):
     }
     return xyr, info
 
-def lsm_for_ellipse():
+def lsm_for_circle(*args, **kwargs):
     warnings.warn(
         f"{lsm_for_ellipse.__name__} is deprecated and will be removed in a future version."
         f"please use kasa_circle instead.",
         category=DeprecationWarning,
         stacklevel=2
     )
-    return kasa_circle()
+    return kasa_circle(*args, **kwargs)
 
 def taubin_circle(points, allow_nan=False):
     if points.shape[1] != 2:
@@ -334,18 +175,19 @@ def taubin_circle(points, allow_nan=False):
     mz = np.mean(z)
     Z = np.column_stack([z, zx, zy, np.ones(len(x))])
     M = (Z.T @ Z) / len(x)
-    P = np.zeros((4, 4))
-    P[0, 0] = 8 * mz
-    P[0, 3] = 2
-    P[3, 0] = 2
-    P[1, 1] = 1
-    P[2, 2] = 1
-    eigenvalues, eigenvectors = linalg.eig(M)
-    idx = np.argsort(eigenvalues)
+    P = np.array([[8*mz, 0, 0, 2],
+                    [0, 1, 0, 0],
+                    [0, 0, 1, 0],
+                    [2, 0, 0, 0]])
+    # eigenvalues, eigenvectors = linalg.eig(M)
+    eigenvalues, eigenvectors = linalg.eig(M, P)
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors = np.real(eigenvectors)
     A_vec = None
+    idx = np.argsort(np.abs(eigenvalues))
     for i in idx:
-        if eigenvalues[i] > 0:
-            A_vec = eigenvalues[:, i]
+        if eigenvalues[i] > -1e-12:
+            A_vec = eigenvectors[:, i]
             break
     if A_vec is None:
         print(f"valid eigenvalues was not found.")
@@ -356,11 +198,23 @@ def taubin_circle(points, allow_nan=False):
     r = np.sqrt((b1**2 + b2**2 - 4 * a * c) / (4 * a**2))
     cx = cx_rel + mx
     cy = cy_rel + my
-    return np.array([cx, cy, r]), info
-
-
-
-
+    xyr = np.array([cx, cy, r])
+    d_center = np.sqrt((x - cx)**2 + (cy - y)**2)
+    geom_err = np.abs(d_center - r)
+    rss = np.sum(geom_err**2)
+    info = {
+        "rss": rss,
+        "rank": None, # not implemented
+        "singular_values": None, # not implemented
+        "num_points": len(x),
+        "num_valid_points": len(valid_points_id),
+        "valid_points_indices": valid_points_id,
+        "radii": d_center,
+        "geom_error_mean": float(np.mean(geom_err)),
+        "geom_error_std": float(np.std(geom_err)),
+        "geom_error_max": float(np.max(geom_err)),
+    }
+    return xyr, info
 
 def lsm_for_circles(points):
     """
@@ -449,7 +303,7 @@ def lsm_for_ellipse(points, allow_nan=False):
                 - ((cx*cos + cy*sin)**2 - E*cos**2)
                     *(cos**2 - B*sin**2) / (sin**2 - B*cos**2)
             )
-    result = [cx, cy, a, b, theta]
+    result = np.array([cx, cy, a, b, theta])
     d_center = np.sqrt((x - cx)**2 +(y - cy)**2)
     geom_err = np.full(num_points, np.nan)
     sin = np.sin(theta)
@@ -522,17 +376,16 @@ def fitzgibbon_ellipse(points, allow_nan=False):
     residuals = D @ abcdef_norm[:, np.newaxis]
     rank = np.linalg.matrix_rank(D)
     xyabtheta = abcdef2xyabtheta(abcdef)
-    d_center = np.sqrt((x - xyabtheta["center"][0])**2 + (y - xyabtheta["center"][1])**2)
+    d_center = np.sqrt((x - xyabtheta[0])**2 + (y - xyabtheta[1])**2)
 
-    dx = x - xyabtheta["center"][0]
-    dy = y - xyabtheta["center"][1]
-    cos = np.cos(xyabtheta["angle"])
-    sin = np.sin(xyabtheta["angle"])
+    dx = x - xyabtheta[0]
+    dy = y - xyabtheta[1]
+    cos = np.cos(xyabtheta[4])
+    sin = np.sin(xyabtheta[4])
     x_rot = dx * cos + dy * sin
     y_rot = -dx * sin + dy * cos
-
     # geom_err, _ = calc_mindist_p2ellipse(np.array([x - xyabtheta["center"][0], y - xyabtheta["center"][1]]), xyabtheta["axes"][0], xyabtheta["axes"][1])
-    geom_err, _ = calc_mindist_p2ellipse(np.array([x_rot, y_rot]).T, xyabtheta["axes"][0], xyabtheta["axes"][1])
+    geom_err, _ = calc_mindist_p2ellipse(np.array([x_rot, y_rot]).T, xyabtheta[2], xyabtheta[3])
     _, s, _ = linalg.svd(D)
     info = {
         "rss": float(np.sum(residuals**2)),
@@ -547,9 +400,10 @@ def fitzgibbon_ellipse(points, allow_nan=False):
         "geom_error_std": float(np.std(geom_err)),
         "geom_error_max": float(np.max(geom_err)),
         "eigenvalues": eigvals[pos_idx],
-        "eigenvectors": eigvecs[:, pos_idx]
+        "eigenvectors": eigvecs[:, pos_idx],
+        "abcdef": abcdef,
     }
-    return abcdef, xyabtheta, info
+    return xyabtheta, info
 
 def abcdef2xyabtheta(abcdef):
     a, b, c, d, e, f = abcdef
@@ -564,11 +418,7 @@ def abcdef2xyabtheta(abcdef):
     semi2 = np.sqrt(max(0, up / down2))
     major = max(semi1, semi2)
     minor = min(semi1, semi2)
-    return {
-        "center": np.array([cx, cy]),
-        "axes": np.array([major, minor]),
-        "angle": theta
-    }
+    return np.array([cx, cy, major, minor, theta])
 
 def calc_mindist_p2ellipse(points, a, b, mode="newton", tol=1e-12, max_iter=100):
     """
@@ -782,45 +632,59 @@ class SimpleCage:
         self.time_series_data(fps=fps, p_cage=p_cage, R_cage=R_cage, a=a, b=b, noise_type=noise_type, noise_max=noise_max, p0_angle=p0_angle)
 
 
+
+
 if __name__ == '__main__':
     print('---- test ----')
     #### ellipse
     rng = np.random.default_rng()
     num_nodes = 20
     node = np.linspace(0, 2*np.pi, num_nodes)
-    a = 8
+    a = 7
     b = 4
-    x = a * np.cos(node)
-    y = b * np.sin(node)
+    x = a * np.cos(node) + rng.normal()
+    y = b * np.sin(node) + rng.normal()
     p = np.column_stack([x, y])
     print(f"data points: {p.shape}")
 
-    xyr, info = lsm_for_circle(p)
-    abcdef, xyabtheta, info = fitzgibbon_ellipse(p)
-
-    x_cfit = xyr[2] * np.cos(node) + xyr[0]
-    y_cfit = xyr[2] * np.sin(node) + xyr[1]
-
-    x_efit = xyabtheta["axes"][0] * np.cos(node) + xyabtheta["center"][0]
-    y_efit = xyabtheta["axes"][1] * np.sin(node) + xyabtheta["center"][1]
-
-
-    xyrange = -10
-    import myplotter
-    plotter = myplotter.MyPlotter(myplotter.PlotSizeCode.SQUARE_FIG)
-    fig, axs = plotter.myfig()
-    ax = axs[0]
-    ax.plot(x, y, lw=2, c='k', alpha=0.4)
-
-    ax.plot(x_cfit, y_cfit, lw=4, c='r', ls='--', alpha=0.4)
-    ax.plot(x_efit, y_efit, lw=4, c='b', ls='--', alpha=0.4)
-
-    ax.set(xlim=(-xyrange, xyrange), ylim=(-xyrange, xyrange))
-    ax.set_aspect(1)
-    ax.axhline(y=0, lw=0.4, c='k')
-    ax.axvline(x=0, lw=0.4, c='k')
+    myfitting = MyFitting(p)
+    fittings = [myfitting.lsm_for_line, myfitting.kasa_circle, myfitting.taubin_circle, myfitting.lsm_for_ellipse, myfitting.fitzgibbon_ellipse]
+    fig, ax = myfitting.compare(fittings)
     plt.show()
 
+
+    # xyr, info = lsm_for_circle(p)
+    # xyr_taubin, info_taubin = taubin_circle(p)
+    # print(f"kasa: {xyr}")
+    # print(f"taubin: {xyr_taubin}")
+
+    # abcdef, xyabtheta, info = fitzgibbon_ellipse(p)
+
+    # x_cfit = xyr[2] * np.cos(node) + xyr[0]
+    # y_cfit = xyr[2] * np.sin(node) + xyr[1]
+
+    # x_tcfit = xyr[2] * np.cos(node) + xyr_taubin[0]
+    # y_tcfit = xyr[2] * np.sin(node) + xyr_taubin[1]
+
+    # x_efit = xyabtheta["axes"][0] * np.cos(node) + xyabtheta["center"][0]
+    # y_efit = xyabtheta["axes"][1] * np.sin(node) + xyabtheta["center"][1]
+
+    # xyrange = 10
+    # import myplotter
+    # plotter = myplotter.MyPlotter(myplotter.PlotSizeCode.SQUARE_FIG)
+    # fig, axs = plotter.myfig()
+    # ax = axs[0]
+    # ax.plot(x, y, lw=8, c='k', alpha=0.2)
+
+    # ax.plot(x_cfit, y_cfit, lw=4, c='r', ls='--', alpha=0.4)
+    # ax.plot(x_tcfit, y_tcfit, lw=2, c='m', ls='--', alpha=0.4)
+    # ax.plot(x_efit, y_efit, lw=4, c='b', ls='--', alpha=0.4)
+
+    # ax.set(xlim=(-xyrange, xyrange), ylim=(-xyrange, xyrange))
+    # ax.set_aspect(1)
+    # ax.axhline(y=0, lw=0.4, c='k')
+    # ax.axvline(x=0, lw=0.4, c='k')
+    # plt.show()
 
 
 
