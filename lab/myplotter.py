@@ -287,6 +287,37 @@ class MyAnimator:
         endpoints = [xs, ys]
         return endpoints
     def __init__(self, fig, axs, data_list, vct_list=None, vline_list=None, hline_list=None, fline_list=None, note_list=None):
+        """
+        Initialize the animator with figure, axes, and various data lists.
+        Args:
+            fig (matplotlib.figure.Figure): The main figure object.
+            axs (list of matplotlib.axes.Axes): List of axes for subplots.
+            data_list (list of dict): Point and trajectory data.
+                - id (int): Axis index.
+                - data (list): [x_array, y_array] for all frames.
+                - color (str): Color for the point and line.
+                - markersize (float): Size of the scatter point.
+                - malpha (float): Alpha transparency for the point.
+                - lw (float): Line width for the trajectory.
+                - lalpha (float): Alpha transparency for the trajectory.
+                - disp_max (int): Max number of previous points to display as a tail.
+            vct_list (list of dict, optional): Vector (arrow) data.
+                - mode (str): 'force' (moving single arrow) or 'field' (vector field).
+                - data (list): [x, y, u, v] for 'force' or [X, Y, U, V, C] for 'field'.
+                - color/cmap/clim/width/scale/alpha: Styling parameters.
+            vline_list (list of dict, optional): Vertical lines (axvline).
+                - data (array): X-position for each frame.
+            hline_list (list of dict, optional): Horizontal lines (axhline).
+                - data (array): Y-position for each frame.
+            fline_list (list of dict, optional): Free lines (plot).
+                - data (list): [[x_start, x_end], [y_start, y_end]] for each frame.
+            note_list (list of dict, optional): Text annotations.
+                - prefix/suffix (str): Text before/after the value.
+                - data (array): Numerical data to display.
+                - position (list): [x, y] in axes coordinates (0 to 1).
+                - sigf/disp_width: Formatting for the number.
+        """
+
         self.fig = fig
         self.axs = axs
         self.data_list_original = data_list # point and line for timeseries data like trajectory
@@ -301,7 +332,7 @@ class MyAnimator:
         self.fline_list = None
         self.note_list_original = note_list # note with ax.text
         self.note_list = None
-        self.num_frames_original = len(self.data_list_original[0]["data"][0])
+        self.num_frames_original = len(self.data_list_original[0]["data"][0]) if data_list is not None else 0
 
     def skip_frames(self, frange, skip):
         if frange:
@@ -984,7 +1015,6 @@ if __name__ == '__main__':
     # plotter = MyPlotter(sizecode=PlotSizeCode.TRAJECTORY_2)
     plotter = MyPlotter(sizecode=PlotSizeCode.TRAJECTORY_WITH_TIMESERIES)
 
-
     fig, axs = plotter.myfig(xlabel="x [mm]", ylabel="y [mm]", notell="tc02_sc02_2000rpm", notelr="0.222sec\ntest")
 
     axs[0].set_aspect(1)
@@ -995,16 +1025,6 @@ if __name__ == '__main__':
     # axs[3].set_ylabel("")
 
     axs[0].plot(x, y, lw=1, c='b')
-    # fig, axs = plotter.slidefig(fig, axs)
-
-    # import mycage
-    # cage = mycage.SimpleCage()
-    # cage.time_series_data()
-
-    # import mycoord
-    # transformer = mycoord.CoordTransformer2D(theta=2*np.pi*t)
-    # res = transformer.transform_coord(np.vstack([x, y]).T, towhich="tolocal")
-    # x_lcs, y_lcs = res.T
 
     # for field
     # xx = np.linspace(-10, 10, 21)
@@ -1014,21 +1034,14 @@ if __name__ == '__main__':
     # V = np.sin((Y[np.newaxis, :, :])*0.4 + t[:, np.newaxis, np.newaxis] * 6)
     # C = np.sqrt(U**2+V**2)
 
-    # plotter = MyPlotter(sizecode=PlotSizeCode.TRAJECTORY_WITH_TIMESERIES)
-    # fig, axs = plotter.myfig(notell='testll', notelr='testlr', sharex=[0, False, False, False], sharey=False, xrange=[(-4, 4), (-10, 10), None, None], yrange=[(-4, 4), (-10, 10), None, None], xtick=1, ytick=1, xsigf=1, ysigf=1)
-    # axs[0].set_aspect(1)
-    # axs[1].set_aspect(1)
     # axs[3].axis("off")
-    # fig, axs = plotter.slidefig(fig, axs)
 
-    # plotter = PlotterForCage()
-    # fig, axs = plotter.plot_trajectory(x, y)
-    # fig, axs = plotter.plot_vstime2([t, t, t], [x, y, z])
-    # fig, axs, ani = plotter.animate_trajectory([x], [y])
-    # fig, axs, ani = plotter.animate_trajectory2([x], [y], [x_lcs], [y_lcs], gravity_angle=-2*np.pi*t-np.pi/2, time=t)
-    # fig, axs, ani = plotter.animate_trajectory3([cage.p_cage[:, 1]], [cage.p_cage[:, 2]], [cage.p_cage_lcs[:, 1]], [cage.p_cage_lcs[:, 2]], cage.t, [cage.t], [cage.p_cage[:, 2]], gravity_angle=-cage.omega_rot_avg*cage.t-np.pi/2)
+    animator = MyAnimator(fig, axs, data_list=None, vct_list=None, vline_list=None, hline_list=None, fline_list=None, note_list=None)
+    help(MyAnimator)
+    # data_list =
 
-    plt.show()
+
+    # plt.show()
 
     print(vars(plotter))
 
