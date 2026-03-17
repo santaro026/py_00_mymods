@@ -20,8 +20,8 @@ the shape of points is aligned to:
 """
 
 class CoordTransformer2D:
-    def __init__(self, coordsys_name='', local_origin=np.zeros(2), theta=0):
-        self.coordsys_name = coordsys_name
+    def __init__(self, name='', local_origin=np.zeros(2), theta=0):
+        self.name = name
         self.local_origin = np.asarray(local_origin)
         self.theta = theta
         self.R = CoordTransformer2D.make_rotation_matrix(self.theta)
@@ -71,8 +71,8 @@ class CoordTransformer2D:
         return p_transformed
 
 class CoordTransformer3D:
-    def __init__(self, coordsys_name='', local_origin=np.zeros(3), euler_angles=np.zeros(3), rot_order='zyx'):
-        self.coordsys_name = coordsys_name
+    def __init__(self, name='', local_origin=np.zeros(3), euler_angles=np.zeros(3), rot_order='zyx'):
+        self.name = name
         self.local_origin = local_origin
         self.rot_order = rot_order
         self.euler_angles = np.atleast_2d(euler_angles) # ordered according to rotating sequence
@@ -429,7 +429,7 @@ if __name__ == '__main__':
     #### 2d
     # num = 100
     # theta = np.linspace(0, 2*np.pi, num)
-    # transformer2d = CoordTransformer2D(coordsys_name='sample', local_origin=np.zeros(2), theta=np.radians(30))
+    # transformer2d = CoordTransformer2D(name='sample', local_origin=np.zeros(2), theta=np.radians(30))
     # p = np.vstack([np.arange(num), np.zeros(num)]).T
     # p = transformer2d.polar_coord(p, towhich='topolar')
     # p2 = transformer2d.transform_coord(p, towhich='toglobal')
@@ -439,7 +439,7 @@ if __name__ == '__main__':
     #### 3d
     num = 100
     euler_angles = np.vstack([np.zeros(num), np.zeros(num), np.linspace(0, 1*np.pi, num)]).T
-    # transformer3d = CoordTransformer3D(coordsys_name='sample_3d', local_origin=np.zeros(3), euler_angles=euler_angles)
+    # transformer3d = CoordTransformer3D(name='sample_3d', local_origin=np.zeros(3), euler_angles=euler_angles)
     p = np.array([20, 0, 0])
     # euler_angles = np.array([[0, 0, 1], [0, 0, 2]])
     p2 = CoordTransformer3D.rotate_euler(p, euler_angles=euler_angles, rot_order='zyx')
