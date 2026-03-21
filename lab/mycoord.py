@@ -255,19 +255,19 @@ class CoordTransformer3d:
         self.rotation = R.from_euler(self.rot_order, euler_angles_reordered)
         self.rotM = self.rotation.as_matrix()
         self.rotM_inv = self.rotation.inv().as_matrix()
-
     @staticmethod
     def reorder_xyz(euler_angles, rot_order):
+        euler_angles = np.atleast_2d(euler_angles)
         d = {"x": 0, "y": 1, "z": 2}
         idx = [d[k.lower()] for k in rot_order]
         return euler_angles[:, idx]
 
     @staticmethod
-    def make_affineM(angles, rot_order, center=np.zeros(3)):
-        angles = np.atleast_2d(angles)
-        num_frames = len(angles)
-        angles_reordered = CoordTransformer3d.reorder_xyz(angles, rot_order)
-        rotation = R.from_euler(rot_order, angles_reordered)
+    def make_affineM(euler_angles, rot_order, center=np.zeros(3)):
+        euler_angles = np.atleast_2d(euler_angles)
+        num_frames = len(euler_angles)
+        euler_angles_reordered = CoordTransformer3d.reorder_xyz(euler_angles, rot_order)
+        rotation = R.from_euler(rot_order, euler_angles_reordered)
         center = np.atleast_2d(np.asarray(center))
         rotM = rotation.as_matrix()
         affineM = np.tile(np.eye(4), (num_frames, 1, 1))
@@ -275,17 +275,31 @@ class CoordTransformer3d:
         translation = center - np.einsum("...jk,...k->...j", rotM, center)
         affineM[:, :3, 3] = translation
         return affineM
+
     @staticmethod
-    def rotate_euler(p, angles, rot_order, center=np.zeros(3)):
+    def rotate_point(p, euler_angles, rot_order, center=np.zeros(3)):
         p = np.atleast_2d(p)
-        angles = np.atleast_2d(angles)
-        num_frames = max(len(p), len(angles))
-        if len(p) > 1 and len(angles) > 1 and len(p) != len(angles):
-            raise ValueError(f"dimension mismatch: length of point ({len(p)} and angles {len(angles)}) must be 1 or equal.")
-        affineM = CoordTransformer3d.make_affineM(angles, rot_order, center=center)
+        euler_angles = np.atleast_2d(euler_angles)
+        num_frames = max(len(p), len(euler_angles))
+        if len(p) > 1 and len(euler_angles) > 1 and len(p) != len(euler_angles):
+            raise ValueError(f"dimension mismatch: length of point ({len(p)} and euler_angles {len(euler_angles)}) must be 1 or equal.")
+        affineM = CoordTransformer3d.make_affineM(euler_angles, rot_order, center=center)
         p_homogeneous = np.concatenate([p, np.ones((len(p), 1))], axis=1)
         p_transformed = (affineM @ p_homogeneous[:, :, np.newaxis]).squeeze(-1)
         return p_transformed[:, :3]
+
+    @staticmethod
+    def rotate_orientation(o, euler_angles, rot_order):
+        o_reordered = CoordTransformer3d.reorder_xyz(o, rot_order)
+        euler_angles_reordered = CoordTransformer3d.reorder_xyz(euler_angles, rot_order)
+        r1 = R.from_euler(rot_order, o_reordered)
+        r2 = R.from_euler(rot_order, euler_angles_reordered)
+        combined_r = r2 * r1
+        # orientaion = combined_r.as_euler("XYZ")
+        # return orientation
+        orientation = combined_r.as_euler(rot_order)
+        orientation_reordered = CoordTransformer3d.reorder_xyz(orientation, rot_order)
+        return orientation_reordered
 
     def transform_point(self, p, towhich="tolocal"):
         p = np.atleast_2d(p)
@@ -397,7 +411,8 @@ def calc_ball_distribution(p_C):
     dazms_deg = np.degrees(dazms)
     return dazms_deg
 
-    """
+
+def sciypy_test():
     #### scipy
     euler = np.radians(np.array([80, 0, 10]))
     rotation = R.from_euler("zyx", euler)
@@ -411,10 +426,8 @@ def calc_ball_distribution(p_C):
     euler = R.from_matrix(mat)
     print(f"euler: {np.degrees(euler.as_euler("zyx"))}")
 
-
     rots = R.from_euler("z", [0, 90, 100, 400], degrees=True)
     print(f"rots: {rots.as_matrix().shape}")
-    """
 
 
 if __name__ == '__main__':
@@ -432,16 +445,21 @@ if __name__ == '__main__':
     # visualize_points([p, p2], xyrange=100)
 
     #### 3d
-    num = 100
-    euler_angles = np.vstack([np.zeros(num), np.zeros(num), np.linspace(0, 1*np.pi, num)]).T
-    transformer3d = CoordTransformer3d(name='sample3d', local_origin=np.zeros(3), euler_angles=euler_angles)
-    p = np.array([20, 0, 0])
+    # num = 100
+    # euler_angles = np.vstack([np.zeros(num), np.zeros(num), np.linspace(0, 1*np.pi, num)]).T
+    # transformer3d = CoordTransformer3d(name='sample3d', local_origin=np.zeros(3), euler_angles=euler_angles)
+    # p = np.array([20, 0, 0])
     # p = np.array([20, 0, 0, 0, 0, 0])
     # euler_angles = np.array([0, 0, 1])
     # p2 = CoordTransformer3d.rotate_euler(p[:3], euler_angles=euler_angles, rot_order='zyx')
-    p2 = transformer3d.transform_coord(p)
-    visualize_points([p2, p], xyrange=100, markersizes=[1, 100])
+    # p2 = transformer3d.transform_coord(p)
+    # visualize_points([p2, p], xyrange=100, markersizes=[1, 100])
 
+    a = np.radians(np.array([0, 0, 10]))
+    b = np.radians(np.array([0, 30, 40]))
+
+    x = CoordTransformer3d.rotate_orientation(a, b, rot_order="zyx")
+    print(f"x: {np.degrees(x)}")
 
 
 
