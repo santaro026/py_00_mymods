@@ -115,7 +115,7 @@ class CoordTransformer2d:
             raise ValueError(f'Unknown transform direction : {towhich}')
         return p_transformed
 
-class CoordTransformer3d_old:
+class CoordTransformer3d_np:
     def __init__(self, name='', local_origin=np.zeros(3), euler_angles=np.zeros(3), rot_order='zyx'):
         self.name = name
         self.local_origin = local_origin
@@ -244,7 +244,6 @@ class CoordTransformer3d_old:
             raise ValueError(f"[Error] p must be 3-dimension in the {self.transform_coord.__name__}, p: {p.shape}")
         return p_transformed
 
-
 class CoordTransformer3d:
     def __init__(self, name='', local_origin=np.zeros(3), euler_angles=np.zeros(3), rot_order='zyx'):
         self.name = name
@@ -260,6 +259,12 @@ class CoordTransformer3d:
         euler_angles = np.atleast_2d(euler_angles)
         d = {"x": 0, "y": 1, "z": 2}
         idx = [d[k.lower()] for k in rot_order]
+        return euler_angles[:, idx]
+    @staticmethod
+    def align_xyz(euler_angles, original_order):
+        euler_angles = np.atleast_2d(euler_angles)
+        d = {k.lower(): i for i, k in enumerate(original_order)}
+        idx = [d["x"], d["y"], d["z"]]
         return euler_angles[:, idx]
 
     @staticmethod
@@ -298,8 +303,17 @@ class CoordTransformer3d:
         # orientaion = combined_r.as_euler("XYZ")
         # return orientation
         orientation = combined_r.as_euler(rot_order)
-        orientation_reordered = CoordTransformer3d.reorder_xyz(orientation, rot_order)
+        orientation_reordered = CoordTransformer3d.align_xyz(orientation, rot_order)
         return orientation_reordered
+
+    @staticmethod
+    def get_basic_vector(euler_angles, rot_order):
+        # u = np.eye(3)
+        euler_angles_reordered = CoordTransformer3d.reorder_xyz(euler_angles, rot_order)
+        r = R.from_euler(rot_order, euler_angles_reordered)
+        # orientation = r.apply(u)
+        orientation = r.as_matrix().transpose(0, 2, 1)
+        return orientation
 
     def transform_point(self, p, towhich="tolocal"):
         p = np.atleast_2d(p)
@@ -332,14 +346,19 @@ class CoordTransformer3d:
         num_frames = max(len(o), len(self.euler_angles))
         if len(o) > 1 and len(self.euler_angles) > 1 and len(o) != len(self.euler_angles):
             raise ValueError(f"dimension mismatch: length of orientation ({len(o)} and self.euler_angles {len(self.euler_angles)}) must be 1 or equal.")
-        input_rot = R.from_euler(self.rot_order, o)
+        o_reordered = CoordTransformer3d.reorder_xyz(o, self.rot_order)
+        input_rot = R.from_euler(self.rot_order, o_reordered)
         if towhich == "tolocal":
             new_rot = self.rotation.inv() * input_rot
+            # new_rot = input_rot * self.rotation.inv()
         elif towhich == 'toglobal':
             new_rot = self.rotation * input_rot
+            # new_rot = input_rot * self.rotation
         else:
             raise ValueError(f'Unknown transform direction : {towhich}')
-        return new_rot.as_euler(self.rot_order)
+        r = new_rot.as_euler(self.rot_order)
+        r_reordered = CoordTransformer3d.align_xyz(r, self.rot_order)
+        return r_reordered
 
     def transform_coord(self, p, towhich="tolocal"):
         p = np.atleast_2d(p)
@@ -461,6 +480,9 @@ if __name__ == '__main__':
     x = CoordTransformer3d.rotate_orientation(a, b, rot_order="zyx")
     print(f"x: {np.degrees(x)}")
 
+    euler_angles = np.array([np.radians(45), 0, 0])
+    v = CoordTransformer3d.get_basic_vector(euler_angles, rot_order="zyx")
+    print(f"v: {v}")
 
 
     # angles = np.array([45, 0, 0])

@@ -42,6 +42,7 @@ class PlotSizeCode(Enum):
     LANDSCAPE_FIG_31 = auto()
     TRAJECTORY = auto()
     TRAJECTORY_2 = auto()
+    TRAJECTORY_22 = auto()
     TRAJECTORY_WITH_TIMESERIES = auto()
     TRAJECTORY_WITH_TIMESERIES2 = auto()
 
@@ -286,7 +287,17 @@ class MyAnimator:
         ys = np.vstack([y1, y2]).T
         endpoints = [xs, ys]
         return endpoints
-    def __init__(self, fig, axs, data_list, vct_list=None, vline_list=None, hline_list=None, fline_list=None, note_list=None):
+    def _get_max_frame_count(self):
+        f_data = len(self.data_list_original[0]["data"][0]) if self.data_list_original is not None else 0
+        f_vct = len(self.vct_list_original[0]["data"][0]) if self.vct_list_original is not None else 0
+        f_vline = len(self.vline_list_original[0]["data"][0]) if self.vline_list_original is not None else 0
+        f_hline = len(self.hline_list_original[0]["data"][0]) if self.hline_list_original is not None else 0
+        f_fline = len(self.fline_list_original[0]["data"][0]) if self.fline_list_original is not None else 0
+        f_note = len(self.note_list_original[0]["data"][0]) if self.note_list_original is not None else 0
+        num_frames = max(f_data, f_vct, f_vline, f_hline, f_fline, f_note, 0)
+        return num_frames
+
+    def __init__(self, fig, axs, data_list=None, vct_list=None, vline_list=None, hline_list=None, fline_list=None, note_list=None):
         """
         Initialize the animator with figure, axes, and various data lists.
         Args:
@@ -317,7 +328,6 @@ class MyAnimator:
                 - position (list): [x, y] in axes coordinates (0 to 1).
                 - sigf/disp_width: Formatting for the number.
         """
-
         self.fig = fig
         self.axs = axs
         self.data_list_original = data_list # point and line for timeseries data like trajectory
@@ -332,7 +342,7 @@ class MyAnimator:
         self.fline_list = None
         self.note_list_original = note_list # note with ax.text
         self.note_list = None
-        self.num_frames_original = len(self.data_list_original[0]["data"][0]) if data_list is not None else 0
+        self.num_frames_original = self._get_max_frame_count()
 
     def skip_frames(self, frange, skip):
         if frange:
@@ -340,10 +350,11 @@ class MyAnimator:
         else:
             s, e = 0, self.num_frames_original
         self.data_list = []
-        for d in self.data_list_original:
-            x, y = d["data"]
-            new_entry = {**d,"data": [x[s:e:skip], y[s:e:skip]]}
-            self.data_list.append(new_entry)
+        if self.data_list_original:
+            for d in self.data_list_original:
+                x, y = d["data"]
+                new_entry = {**d,"data": [x[s:e:skip], y[s:e:skip]]}
+                self.data_list.append(new_entry)
         if self.vct_list_original:
             self.vct_list = []
             for d in self.vct_list_original:
@@ -571,7 +582,7 @@ class MyAnimator:
 
     def make_func_ani(self, frange=None, skip=1, interval=100, blit=True):
         self.skip_frames(frange, skip)
-        num_frames = len(self.data_list[0]["data"][0])
+        num_frames = self.num_frames_original // skip
         ani = FuncAnimation(self.fig, self.update, fargs=(), frames=num_frames, init_func=self.init_func_ani, interval=interval, blit=blit)
         return ani
 
@@ -1007,18 +1018,21 @@ if __name__ == '__main__':
     z = np.sin(2*np.pi*t*4)**2
     ft = 4*np.sin(2*np.pi*t) + 0.2*np.sin(2*np.pi*20*t)
 
+    sizecode = PlotSizeCode.SQUARE_ILLUST
+    sizecode = PlotSizeCode.SQUARE_FIG
+    sizecode = PlotSizeCode.RECTANGLE_FIG
+    sizecode = PlotSizeCode.LANDSCAPE_FIG_21
+    sizecode = PlotSizeCode.LANDSCAPE_FIG_31
+    sizecode = PlotSizeCode.TRAJECTORY_2
+    sizecode = PlotSizeCode.TRAJECTORY_22
+    # sizecode = PlotSizeCode.TRAJECTORY_WITH_TIMESERIES
 
-    # plotter = MyPlotter(sizecode=PlotSizeCode.SQUARE_ILLUST)
-    # plotter = MyPlotter(sizecode=PlotSizeCode.SQUARE_FIG)
-    # plotter = MyPlotter(sizecode=PlotSizeCode.RECTANGLE_FIG)
-    # plotter = MyPlotter(sizecode=PlotSizeCode.LANDSCAPE_FIG_31)
-    # plotter = MyPlotter(sizecode=PlotSizeCode.TRAJECTORY_2)
-    plotter = MyPlotter(sizecode=PlotSizeCode.TRAJECTORY_WITH_TIMESERIES)
-
-    fig, axs = plotter.myfig(xlabel="x [mm]", ylabel="y [mm]", notell="tc02_sc02_2000rpm", notelr="0.222sec\ntest")
-
-    axs[0].set_aspect(1)
-    axs[1].set_aspect(1)
+    plotter = MyPlotter(sizecode=sizecode)
+    fig, axs = plotter.myfig(notell="note lower left", slide=False)
+    for i in range(4):
+        axs[i].set_aspect(1)
+    # axs[0].set_aspect(1)
+    # axs[1].set_aspect(1)
 
     # axs[3].tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
     # axs[3].set_xlabel("")
@@ -1037,12 +1051,9 @@ if __name__ == '__main__':
     # axs[3].axis("off")
 
     animator = MyAnimator(fig, axs, data_list=None, vct_list=None, vline_list=None, hline_list=None, fline_list=None, note_list=None)
-    help(MyAnimator)
-    # data_list =
+    # help(MyAnimator)
 
-
-    # plt.show()
-
+    plt.show()
     print(vars(plotter))
 
 
